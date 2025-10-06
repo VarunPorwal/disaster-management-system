@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { LocationOn } from '@mui/icons-material';
 import {
   AppBar,
   Toolbar,
@@ -40,6 +41,7 @@ const getNavigationItems = (role) => {
   const adminNav = [
     { path: '/dashboard', label: 'Dashboard', icon: <Dashboard /> },
     { path: '/dashboard/disasters', label: 'Disasters', icon: <Warning /> },
+    { path: '/dashboard/areas', label: 'Affected Areas', icon: <LocationOn /> },
     { path: '/dashboard/volunteers', label: 'Volunteers', icon: <People /> },
     { path: '/dashboard/camps', label: 'Relief Camps', icon: <Home /> },
     { path: '/dashboard/victims', label: 'Victims', icon: <PersonAdd /> },
@@ -48,6 +50,7 @@ const getNavigationItems = (role) => {
     { path: '/dashboard/supplies', label: 'Supplies', icon: <Inventory /> },
     { path: '/dashboard/requests', label: 'Requests', icon: <Assignment /> },
     { path: '/dashboard/distributions', label: 'Distributions', icon: <LocalShipping /> },
+    
   ];
 
   const campManagerNav = [

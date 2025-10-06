@@ -3,8 +3,9 @@ import { Routes, Route } from 'react-router-dom';
 import Layout from '../components/Layout';
 import DashboardHome from './DashboardHome';
 import DisastersPage from './DisastersPage';
+import AffectedAreasPage from './AffectedAreasPage'; // Add this import
 import VolunteersPage from './VolunteersPage';
-// We'll create these pages next
+import ReliefCampsPage from './ReliefCampsPage';
 
 const Dashboard = () => {
   return (
@@ -12,8 +13,9 @@ const Dashboard = () => {
       <Routes>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/disasters" element={<DisastersPage />} />
+        <Route path="/areas" element={<AffectedAreasPage />} /> {/* Add this route */}
         <Route path="/volunteers" element={<VolunteersPage />} />
-        {/* Add more routes as we build them */}
+        <Route path="/camps" element={<ReliefCampsPage />} />
       </Routes>
     </Layout>
   );
