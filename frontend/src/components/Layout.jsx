@@ -47,7 +47,7 @@ const getNavigationItems = (role) => {
     { path: '/dashboard/victims', label: 'Victims', icon: <PersonAdd /> },
     { path: '/dashboard/donors', label: 'Donors', icon: <Favorite /> },
     { path: '/dashboard/donations', label: 'Donations', icon: <MonetizationOn /> },
-    { path: '/dashboard/supplies', label: 'Supplies', icon: <Inventory /> },
+    { path: '/dashboard/supplies', label: 'Supply Management', icon: <Inventory /> },
     { path: '/dashboard/requests', label: 'Requests', icon: <Assignment /> },
     { path: '/dashboard/distributions', label: 'Distributions', icon: <LocalShipping /> },
     

@@ -53,7 +53,7 @@ const ROLE_PERMISSIONS = {
   
   'Donor': {
     disasters: ['read'], // See what disasters need help
-    volunteers: [], // No volunteer access
+    volunteers: ['read'], // No volunteer access
     areas: ['read'], // See affected areas
     camps: ['read'], // See relief camps
     victims: [], // No victim access

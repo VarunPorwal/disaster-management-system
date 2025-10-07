@@ -3,6 +3,114 @@ const router = express.Router();
 const VolunteerModel = require('../models/volunteer');
 const { authenticateToken, authorizeRoles, optionalAuth } = require('../middleware/auth');
 
+// GET volunteers with assignments - Fixed for your schema
+router.get('/with-assignments', authenticateToken, authorizeRoles('Admin'), async (req, res) => {
+  try {
+    const pool = require('../config/database');
+    const result = await pool.query(`
+      SELECT 
+        v.volunteer_id,
+        v.name,
+        v.email,
+        v.contact,
+        v.skills,
+        
+        
+        -- Area assignment info from AssignedTo junction table
+        at.area_id as assigned_area_id,
+        at.assign_date,
+        aa.name as area_name,
+        aa.district as area_district,
+        aa.state as area_state,
+        
+        -- Camp work info from WorksAt junction table
+        wa.camp_id as works_at_camp_id,
+        wa.role as work_role,
+        rc.name as camp_name,
+        rc.location as camp_location,
+        rc.status as camp_status
+        
+      FROM Volunteers v
+      LEFT JOIN AssignedTo at ON v.volunteer_id = at.volunteer_id
+      LEFT JOIN AffectedAreas aa ON at.area_id = aa.area_id
+      LEFT JOIN WorksAt wa ON v.volunteer_id = wa.volunteer_id  
+      LEFT JOIN ReliefCamps rc ON wa.camp_id = rc.camp_id
+      ORDER BY v.volunteer_id, at.area_id, wa.camp_id
+    `);
+    
+    console.log(`Found ${result.rows.length} volunteer assignment records`);
+    
+    res.json({
+      success: true,
+      data: result.rows,
+      count: result.rows.length,
+      message: 'Volunteers with assignments retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error in GET /volunteers/with-assignments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving volunteers with assignments',
+      error: error.message
+    });
+  }
+});
+
+
+// ADD assignment endpoints HERE too - BEFORE /:id route
+router.post('/assign-area', authenticateToken, authorizeRoles('Admin'), async (req, res) => {
+  try {
+    const { volunteer_id, area_id } = req.body;
+    const assign_date = new Date().toISOString().split('T')[0];
+    
+    const AssignedToModel = require('../models/assignedTo');
+    const newAssignment = await AssignedToModel.createAreaAssignment({
+      volunteer_id,
+      area_id, 
+      assign_date
+    });
+    
+    res.status(201).json({
+      success: true,
+      data: newAssignment,
+      message: 'Volunteer assigned to area successfully'
+    });
+  } catch (error) {
+    console.error('Error in POST /volunteers/assign-area:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning volunteer to area',
+      error: error.message
+    });
+  }
+});
+
+router.post('/assign-camp', authenticateToken, authorizeRoles('Admin'), async (req, res) => {
+  try {
+    const { volunteer_id, camp_id, role } = req.body;
+    
+    const WorksAtModel = require('../models/worksAt');
+    const newAssignment = await WorksAtModel.createWorkAssignment({
+      volunteer_id,
+      camp_id,
+      role: role || 'General Worker'
+    });
+    
+    res.status(201).json({
+      success: true,
+      data: newAssignment,
+      message: 'Volunteer assigned to camp successfully'
+    });
+  } catch (error) {
+    console.error('Error in POST /volunteers/assign-camp:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning volunteer to camp',
+      error: error.message
+    });
+  }
+});
+
 // GET all volunteers - Protected with role-based filtering
 router.get('/', authenticateToken, async (req, res) => {
   try {
