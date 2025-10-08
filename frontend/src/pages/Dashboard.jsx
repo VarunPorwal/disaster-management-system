@@ -8,15 +8,9 @@ import VolunteersPage from './VolunteersPage';
 import ReliefCampsPage from './ReliefCampsPage';
 import VictimsPage from './VictimsPage'; // Add import
 import SuppliesPage from './SuppliesPage';
-import DonationsPage from './DonationsPage';  // Add import
-
-// Add route
-
-
-// Add route
-
-
-
+import DonationsPage from './DonationsPage';
+import RequestsPage from './RequestsPage';
+import DistributionsPage from './DistributionsPage';
 
 
 
@@ -33,6 +27,8 @@ const Dashboard = () => {
         <Route path="/victims" element={<VictimsPage />} />
         <Route path="/supplies" element={<SuppliesPage />} />
         <Route path="/donations" element={<DonationsPage />} />
+        <Route path="/requests" element={<RequestsPage />} />
+        <Route path="/distributions" element={<DistributionsPage />} />
 
       </Routes>
     </Layout>
