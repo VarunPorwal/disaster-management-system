@@ -5,21 +5,60 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, PriorityHigh as
 import { requestsService } from '../services/requestsService';
 import { victimsService } from '../services/victimsService';
 import { reliefCampsService } from '../services/reliefCampsService';
+import { campManagerService } from '../services/campManagerService';
 import { useAuth } from '../context/AuthContext';
 
 const RequestsPage = () => {
   const { user } = useAuth();
-  const [tabValue, setTabValue] = useState(0); const [requests, setRequests] = useState({ all: [], pending: [], urgent: [] }); const [victims, setVictims] = useState([]); const [camps, setCamps] = useState([]); const [loading, setLoading] = useState(true); const [dialog, setDialog] = useState({ open: false, editing: null }); const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); const [stats, setStats] = useState({}); const [formData, setFormData] = useState({ victim_id: '', camp_id: '', item_requested: '', quantity_needed: '', priority: 'Medium', status: 'Pending', request_date: new Date().toISOString().split('T')[0] });
+  const [tabValue, setTabValue] = useState(0);
+  const [requests, setRequests] = useState({ all: [], pending: [], urgent: [] });
+  const [victims, setVictims] = useState([]);
+  const [camps, setCamps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dialog, setDialog] = useState({ open: false, editing: null });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [stats, setStats] = useState({});
+  const [formData, setFormData] = useState({ victim_id: '', camp_id: '', item_requested: '', quantity_needed: '', priority: 'Medium', status: 'Pending', request_date: new Date().toISOString().split('T')[0] });
+  
+  // Camp manager filtering
+  const [managerCampIds, setManagerCampIds] = useState([]);
+  const [campNames, setCampNames] = useState([]);
+  const isCampManager = user?.role === 'Camp Manager';
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [reqRes, vicRes, campRes, statsRes, urgentRes] = await Promise.all([requestsService.getAll(), victimsService.getAllVictims(), reliefCampsService.getAllCamps(), requestsService.getStats(), requestsService.getUrgent()]);
+      
+      // Get camp IDs for filtering
+      let campIdsToFilter = [];
+      let campNamesForAlert = [];
+      
+      if (isCampManager && user?.user_id) {
+        try {
+          const managerCampsRes = await campManagerService.getManagerCamps(user.user_id);
+          const managerCamps = managerCampsRes.data || [];
+          campIdsToFilter = managerCamps.map(c => c.camp_id);
+          campNamesForAlert = managerCamps.map(c => c.name);
+          setManagerCampIds(campIdsToFilter);
+          setCampNames(campNamesForAlert);
+        } catch (error) {
+          console.error('Error loading manager camps:', error);
+        }
+      }
+      
+      const [reqRes, vicRes, campRes, statsRes] = await Promise.all([requestsService.getAll(), victimsService.getAllVictims(), reliefCampsService.getAllCamps(), requestsService.getStats()]);
       
       if (reqRes.data?.length) {
-        const processed = reqRes.data.map((r, i) => ({ ...r, id: r.request_id || i + 1, request_id: r.request_id || i + 1, victim_display: r.victim_name || `Victim ${r.victim_id}`, camp_display: r.camp_name || `Camp ${r.camp_id}`, date_display: r.request_date ? new Date(r.request_date).toLocaleDateString('en-IN') : '-', priority_color: { High: 'error', Medium: 'warning', Low: 'info' }[r.priority] || 'default', status_color: { Pending: 'warning', Fulfilled: 'success', Rejected: 'error' }[r.status] || 'default', medical_urgent: r.priority === 'High' && (r.item_requested?.toLowerCase().includes('medicine') || r.item_requested?.toLowerCase().includes('insulin') || r.victim_medical_condition) })).sort((a, b) => { if (a.priority === 'High' && b.priority !== 'High') return -1; if (b.priority === 'High' && a.priority !== 'High') return 1; return new Date(b.request_date) - new Date(a.request_date); });
+        let processed = reqRes.data.map((r, i) => ({ ...r, id: r.request_id || i + 1, request_id: r.request_id || i + 1, victim_display: r.victim_name || `Victim ${r.victim_id}`, camp_display: r.camp_name || `Camp ${r.camp_id}`, date_display: r.request_date ? new Date(r.request_date).toLocaleDateString('en-IN') : '-', priority_color: { High: 'error', Medium: 'warning', Low: 'info' }[r.priority] || 'default', status_color: { Pending: 'warning', Fulfilled: 'success', Rejected: 'error' }[r.status] || 'default', medical_urgent: r.priority === 'High' && (r.item_requested?.toLowerCase().includes('medicine') || r.item_requested?.toLowerCase().includes('insulin') || r.victim_medical_condition) }));
+        
+        // Apply camp manager filtering
+        if (isCampManager && campIdsToFilter.length > 0) {
+          processed = processed.filter(request => campIdsToFilter.includes(request.camp_id));
+        }
+        
+        processed = processed.sort((a, b) => { if (a.priority === 'High' && b.priority !== 'High') return -1; if (b.priority === 'High' && a.priority !== 'High') return 1; return new Date(b.request_date) - new Date(a.request_date); });
         
         const pending = processed.filter(r => r.status === 'Pending'); const urgent = processed.filter(r => r.priority === 'High' && r.status === 'Pending');
         setRequests({ all: processed, pending, urgent });
@@ -87,16 +126,22 @@ const RequestsPage = () => {
 
   return (
     <Box>
+      {isCampManager && campNames.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Showing requests from: {campNames.join(', ')}
+        </Alert>
+      )}
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box><Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>📋 Supply Requests</Typography><Typography variant="body2" color="text.secondary">{stats.total_requests || 0} total requests • {requests.urgent.length} urgent</Typography></Box>
+        <Box><Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>📋 Supply Requests</Typography><Typography variant="body2" color="text.secondary">{requests.all.length} {isCampManager ? 'camp' : 'total'} requests • {requests.urgent.length} urgent</Typography></Box>
         {(user?.role === 'Admin' || user?.role === 'Camp Manager' || user?.role === 'Volunteer') && <Button variant="contained" startIcon={<AddIcon />} onClick={() => openDialog()} size="large">Create Request</Button>}
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <StatCard icon={<RequestIcon sx={{ fontSize: 48, mb: 1 }} />} value={stats.total_requests || 0} label="Total Requests" color="primary" />
+        <StatCard icon={<RequestIcon sx={{ fontSize: 48, mb: 1 }} />} value={requests.all.length} label={`${isCampManager ? 'Camp' : 'Total'} Requests`} color="primary" />
         <StatCard icon={<UrgentIcon sx={{ fontSize: 48, mb: 1 }} />} value={requests.urgent.length} label="Urgent Requests" color="error" urgent={requests.urgent.length > 0} />
-        <StatCard icon={<FulfilledIcon sx={{ fontSize: 48, mb: 1 }} />} value={stats.fulfilled_requests || 0} label="Fulfilled" color="success" />
-        <StatCard icon={<RejectedIcon sx={{ fontSize: 48, mb: 1 }} />} value={stats.pending_requests || 0} label="Pending" color="warning" />
+        <StatCard icon={<FulfilledIcon sx={{ fontSize: 48, mb: 1 }} />} value={requests.all.filter(r => r.status === 'Fulfilled').length} label="Fulfilled" color="success" />
+        <StatCard icon={<RejectedIcon sx={{ fontSize: 48, mb: 1 }} />} value={requests.pending.length} label="Pending" color="warning" />
       </Grid>
 
       {requests.urgent.length > 0 && <Alert severity="error" sx={{ mb: 3, fontSize: '1rem' }}><Typography variant="h6" sx={{ mb: 1 }}>🚨 {requests.urgent.length} Urgent Requests Need Immediate Attention!</Typography>High priority medical and emergency requests are waiting for fulfillment.</Alert>}

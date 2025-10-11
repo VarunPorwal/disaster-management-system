@@ -5,18 +5,59 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Person as Perso
 import { victimsService } from '../services/victimsService';
 import { reliefCampsService } from '../services/reliefCampsService';
 import { affectedAreasService } from '../services/affectedAreasService';
+import { campManagerService } from '../services/campManagerService';
 import { useAuth } from '../context/AuthContext';
 
 const VictimsPage = () => {
   const { user } = useAuth();
-  const [victims, setVictims] = useState([]); const [camps, setCamps] = useState([]); const [areas, setAreas] = useState([]); const [loading, setLoading] = useState(true); const [openDialog, setOpenDialog] = useState(false); const [editingVictim, setEditingVictim] = useState(null); const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); const [formData, setFormData] = useState({ area_id: '', camp_id: '', name: '', age: '', gender: '', contact: '', address: '', medical_condition: '' });
+  const [victims, setVictims] = useState([]);
+  const [camps, setCamps] = useState([]);
+  const [areas, setAreas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingVictim, setEditingVictim] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [formData, setFormData] = useState({ area_id: '', camp_id: '', name: '', age: '', gender: '', contact: '', address: '', medical_condition: '' });
+  
+  // Simple camp manager filtering
+  const [managerCampIds, setManagerCampIds] = useState([]);
+  const [campNames, setCampNames] = useState([]);
 
-  useEffect(() => { loadVictims(); loadCamps(); loadAreas(); }, []);
+  useEffect(() => { 
+    loadVictims(); 
+    loadCamps(); 
+    loadAreas(); 
+  }, []);
 
   const loadVictims = async () => {
     try {
       setLoading(true);
-      const [victimsRes, areasRes, campsRes] = await Promise.all([victimsService.getAllVictims(), affectedAreasService.getAllAffectedAreas(), reliefCampsService.getAllCamps()]);
+      
+      // If camp manager, get their camps first
+      let campIdsToFilter = [];
+      let campNamesForAlert = [];
+      
+      if (user?.role === 'Camp Manager' && user?.user_id) {
+        try {
+          const managerCampsRes = await campManagerService.getManagerCamps(user.user_id);
+          const managerCamps = managerCampsRes.data || [];
+          campIdsToFilter = managerCamps.map(c => c.camp_id);
+          campNamesForAlert = managerCamps.map(c => c.name);
+          setManagerCampIds(campIdsToFilter);
+          setCampNames(campNamesForAlert);
+          console.log('🏕️ Camp Manager filtering by camps:', campNamesForAlert);
+        } catch (error) {
+          console.error('Error loading manager camps:', error);
+        }
+      }
+
+      // Load all data
+      const [victimsRes, areasRes, campsRes] = await Promise.all([
+        victimsService.getAllVictims(),
+        affectedAreasService.getAllAffectedAreas(),
+        reliefCampsService.getAllCamps()
+      ]);
+
       const areasMap = {}; const campsMap = {};
       if (areasRes.data?.length) areasRes.data.forEach(area => areasMap[area.area_id] = { name: area.name, district: area.district });
       if (campsRes.data?.length) campsRes.data.forEach(camp => campsMap[camp.camp_id] = { name: camp.name });
@@ -27,13 +68,42 @@ const VictimsPage = () => {
           const victimId = parseInt(victim.victim_id);
           if (victimId && !processedIds.has(victimId) && !uniqueVictims.has(victimId)) {
             processedIds.add(victimId);
-            const areaInfo = areasMap[victim.area_id]; const campInfo = campsMap[victim.camp_id];
-            uniqueVictims.set(victimId, { ...victim, victim_id: victimId, name: victim.name || 'Unknown', age: parseInt(victim.age) || 0, gender: victim.gender || 'Unknown', area_display: areaInfo ? `${areaInfo.name}, ${areaInfo.district}` : 'Unknown Area', camp_display: campInfo ? campInfo.name : 'No Camp', age_category: victim.age < 18 ? 'Child' : victim.age >= 60 ? 'Elderly' : 'Adult', medical_status: victim.medical_condition ? 'Medical Needs' : 'Normal' });
+            
+            // Apply camp manager filtering here
+            if (user?.role === 'Camp Manager' && campIdsToFilter.length > 0) {
+              if (!campIdsToFilter.includes(victim.camp_id)) {
+                return; // Skip this victim
+              }
+            }
+            
+            const areaInfo = areasMap[victim.area_id]; 
+            const campInfo = campsMap[victim.camp_id];
+            uniqueVictims.set(victimId, { 
+              ...victim, 
+              victim_id: victimId, 
+              name: victim.name || 'Unknown', 
+              age: parseInt(victim.age) || 0, 
+              gender: victim.gender || 'Unknown', 
+              area_display: areaInfo ? `${areaInfo.name}, ${areaInfo.district}` : 'Unknown Area', 
+              camp_display: campInfo ? campInfo.name : 'No Camp', 
+              age_category: victim.age < 18 ? 'Child' : victim.age >= 60 ? 'Elderly' : 'Adult', 
+              medical_status: victim.medical_condition ? 'Medical Needs' : 'Normal' 
+            });
           }
         });
       }
-      setVictims(Array.from(uniqueVictims.values()).sort((a, b) => a.victim_id - b.victim_id));
-    } catch (error) { showSnackbar('Error loading victims: ' + error.message, 'error'); setVictims([]); } finally { setLoading(false); }
+      
+      const finalVictims = Array.from(uniqueVictims.values()).sort((a, b) => a.victim_id - b.victim_id);
+      setVictims(finalVictims);
+      
+      console.log('✅ Final victims loaded:', finalVictims.length);
+      
+    } catch (error) { 
+      showSnackbar('Error loading victims: ' + error.message, 'error'); 
+      setVictims([]); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const loadCamps = async () => { try { const res = await reliefCampsService.getAllCamps(); setCamps(res.data || []); } catch { setCamps([]); } };
@@ -73,10 +143,16 @@ const VictimsPage = () => {
 
   return (
     <Box>
+      {user?.role === 'Camp Manager' && campNames.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Showing victims from your camps: {campNames.join(', ')}
+        </Alert>
+      )}
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>👥 Victims Registration</Typography>
-          <Typography variant="body2" color="text.secondary">{victims.length} registered victims</Typography>
+          <Typography variant="body2" color="text.secondary">{victims.length} {user?.role === 'Camp Manager' ? 'camp' : 'registered'} victims</Typography>
         </Box>
         {(user?.role === 'Admin' || user?.role === 'Camp Manager') && <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreate} size="large">Register Victim</Button>}
       </Box>

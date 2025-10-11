@@ -55,7 +55,7 @@ const getNavigationItems = (role) => {
 
   const campManagerNav = [
     { path: '/dashboard', label: 'Dashboard', icon: <Dashboard /> },
-    { path: '/dashboard/my-camps', label: 'My Camps', icon: <Home /> },
+    { path: '/dashboard/camps', label: 'My Camps', icon: <Home /> },
     { path: '/dashboard/victims', label: 'Victims', icon: <PersonAdd /> },
     { path: '/dashboard/supplies', label: 'Supplies', icon: <Inventory /> },
     { path: '/dashboard/requests', label: 'Requests', icon: <Assignment /> },
@@ -65,8 +65,11 @@ const getNavigationItems = (role) => {
   const volunteerNav = [
     { path: '/dashboard', label: 'Dashboard', icon: <Dashboard /> },
     { path: '/dashboard/my-assignments', label: 'My Assignments', icon: <Assignment /> },
-    { path: '/dashboard/disasters', label: 'Disasters', icon: <Warning /> },
     { path: '/dashboard/camps', label: 'Relief Camps', icon: <Home /> },
+    { path: '/dashboard/disasters', label: 'Disasters', icon: <Warning /> },
+    { path: '/dashboard/victims', label: 'Victims', icon: <PersonAdd /> },
+    { path: '/dashboard/requests', label: 'Requests', icon: <Assignment /> },
+    
   ];
 
   const donorNav = [

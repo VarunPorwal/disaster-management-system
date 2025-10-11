@@ -4,18 +4,41 @@ import { DataGrid } from '@mui/x-data-grid';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Home as CampIcon, People as PeopleIcon } from '@mui/icons-material';
 import { reliefCampsService } from '../services/reliefCampsService';
 import { affectedAreasService } from '../services/affectedAreasService';
+import { campManagerService } from '../services/campManagerService';
 import { useAuth } from '../context/AuthContext';
 
 const ReliefCampsPage = () => {
   const { user } = useAuth();
   const [camps, setCamps] = useState([]); const [affectedAreas, setAffectedAreas] = useState([]); const [loading, setLoading] = useState(true); const [openDialog, setOpenDialog] = useState(false); const [editingCamp, setEditingCamp] = useState(null); const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); const [formData, setFormData] = useState({ area_id: '', name: '', capacity: '', current_occupancy: '', location: '', status: 'Active', manager_id: '', date_established: '', latitude: '', longitude: '' });
 
+  // Camp manager filtering
+  const [managerCampIds, setManagerCampIds] = useState([]);
+  const [campNames, setCampNames] = useState([]);
+  const isCampManager = user?.role === 'Camp Manager';
+
   useEffect(() => { loadCamps(); loadAffectedAreas(); }, []);
 
-  // COMPLETE DUPLICATE ELIMINATION - GUARANTEED UNIQUE
   const loadCamps = async () => {
     try {
       setLoading(true);
+      
+      // Load camp IDs for filtering
+      let campIdsToFilter = [];
+      let campNamesForAlert = [];
+      
+      if (isCampManager && user?.user_id) {
+        try {
+          const managerCampsRes = await campManagerService.getManagerCamps(user.user_id);
+          const managerCamps = managerCampsRes.data || [];
+          campIdsToFilter = managerCamps.map(c => c.camp_id);
+          campNamesForAlert = managerCamps.map(c => c.name);
+          setManagerCampIds(campIdsToFilter);
+          setCampNames(campNamesForAlert);
+        } catch (error) {
+          console.error('Error loading manager camps:', error);
+        }
+      }
+      
       const response = await reliefCampsService.getAllCamps();
       
       // Use Map for 100% duplicate elimination
@@ -44,10 +67,17 @@ const ReliefCampsPage = () => {
         });
       }
       
-      // Convert to array and sort by ID
-      const finalCamps = Array.from(uniqueCamps.values()).sort((a, b) => a.camp_id - b.camp_id);
+      // Convert to array
+      let finalCamps = Array.from(uniqueCamps.values());
+      
+      // Apply camp manager filtering
+      if (isCampManager && campIdsToFilter.length > 0) {
+        finalCamps = finalCamps.filter(camp => campIdsToFilter.includes(camp.camp_id));
+      }
+      
+      finalCamps = finalCamps.sort((a, b) => a.camp_id - b.camp_id);
       setCamps(finalCamps);
-      console.log(`✅ Loaded ${finalCamps.length} unique camps (no duplicates)`);
+      console.log(`✅ Loaded ${finalCamps.length} ${isCampManager ? 'managed' : 'unique'} camps`);
     } catch (error) { showSnackbar('Error loading camps: ' + error.message, 'error'); setCamps([]); } finally { setLoading(false); }
   };
 
@@ -83,14 +113,23 @@ const ReliefCampsPage = () => {
 
   return (
     <Box>
+      {isCampManager && campNames.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Managing camps: {campNames.join(', ')}
+        </Alert>
+      )}
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">🏕️ Relief Camps Management</Typography>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>🏕️ Relief Camps Management</Typography>
+          <Typography variant="body2" color="text.secondary">{camps.length} {isCampManager ? 'managed' : 'total'} camps</Typography>
+        </Box>
         {(user?.role === 'Admin' || user?.role === 'Camp Manager') && <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreate}>Add Camp</Button>}
       </Box>
       <Card><CardContent><DataGrid rows={camps} columns={columns} getRowId={(row) => row.camp_id} loading={loading} pageSizeOptions={[5, 10, 25]} initialState={{ pagination: { paginationModel: { pageSize: 10 }}, sorting: { sortModel: [{ field: 'camp_id', sort: 'asc' }] } }} disableRowSelectionOnClick sx={{ height: 650, '& .MuiDataGrid-row': { minHeight: '70px !important', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' } }, '& .MuiDataGrid-cell': { padding: '8px', display: 'flex', alignItems: 'center', whiteSpace: 'normal !important', wordWrap: 'break-word' } }} /></CardContent></Card>
       
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>{editingCamp ? 'Edit Camp' : 'Create Camp'}</DialogTitle>
+        <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>🏕️ {editingCamp ? 'Edit Camp' : 'Create Camp'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ pt: 2 }}>
             <Grid item xs={12} md={6}><TextField fullWidth select label="Affected Area *" name="area_id" value={formData.area_id} onChange={handleFormChange} required><MenuItem value="">Select Area</MenuItem>{affectedAreas.map(area => <MenuItem key={area.area_id} value={area.area_id}>{area.name} - {area.district}</MenuItem>)}</TextField></Grid>
@@ -98,14 +137,14 @@ const ReliefCampsPage = () => {
             <Grid item xs={12} md={3}><TextField fullWidth label="Capacity *" name="capacity" type="number" value={formData.capacity} onChange={handleFormChange} required inputProps={{ min: 1 }} /></Grid>
             <Grid item xs={12} md={3}><TextField fullWidth label="Current Occupancy" name="current_occupancy" type="number" value={formData.current_occupancy} onChange={handleFormChange} inputProps={{ min: 0 }} /></Grid>
             <Grid item xs={12} md={3}><TextField fullWidth select label="Status *" name="status" value={formData.status} onChange={handleFormChange} required>{['Active', 'Full', 'Closed', 'Under Construction', 'Maintenance'].map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</TextField></Grid>
-            <Grid item xs={12} md={3}><TextField fullWidth label="Manager ID *" name="manager_id" type="number" value={formData.manager_id} onChange={handleFormChange} required inputProps={{ min: 1 }} /></Grid>
+            <Grid item xs={12} md={3}><TextField fullWidth label="Manager ID *" name="manager_id" type="number" value={formData.manager_id} onChange={handleFormChange} required inputProps={{ min: 1 }} helperText={isCampManager ? `Your ID: ${user?.user_id}` : 'Enter manager user ID'} /></Grid>
             <Grid item xs={12} md={4}><TextField fullWidth label="Date Established" name="date_established" type="date" value={formData.date_established} onChange={handleFormChange} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={12} md={4}><TextField fullWidth label="Latitude" name="latitude" type="number" value={formData.latitude} onChange={handleFormChange} inputProps={{ step: 'any' }} /></Grid>
             <Grid item xs={12} md={4}><TextField fullWidth label="Longitude" name="longitude" type="number" value={formData.longitude} onChange={handleFormChange} inputProps={{ step: 'any' }} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Location *" name="location" value={formData.location} onChange={handleFormChange} required multiline rows={2} /></Grid>
           </Grid>
         </DialogContent>
-        <DialogActions><Button onClick={() => setOpenDialog(false)}>Cancel</Button><Button onClick={handleSubmit} variant="contained">{editingCamp ? 'Update' : 'Create'}</Button></DialogActions>
+        <DialogActions sx={{ p: 3 }}><Button onClick={() => setOpenDialog(false)} variant="outlined">Cancel</Button><Button onClick={handleSubmit} variant="contained">{editingCamp ? 'Update' : 'Create'} Camp</Button></DialogActions>
       </Dialog>
       
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}><Alert severity={snackbar.severity}>{snackbar.message}</Alert></Snackbar>

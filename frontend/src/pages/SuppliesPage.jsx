@@ -4,20 +4,53 @@ import { DataGrid } from '@mui/x-data-grid';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Inventory as InventoryIcon, Warning as WarningIcon, TrendingUp as TrendingIcon, Transform as ConvertIcon, Assignment as AssignIcon } from '@mui/icons-material';
 import { suppliesService, donationsService } from '../services/suppliesService';
 import { reliefCampsService } from '../services/reliefCampsService';
+import { campManagerService } from '../services/campManagerService';
 import { useAuth } from '../context/AuthContext';
 
 const SuppliesPage = () => {
   const { user } = useAuth();
-  const [tabValue, setTabValue] = useState(0); const [supplies, setSupplies] = useState([]); const [donations, setDonations] = useState([]); const [camps, setCamps] = useState([]); const [loading, setLoading] = useState(true); const [openConvertDialog, setOpenConvertDialog] = useState(false); const [openAssignDialog, setOpenAssignDialog] = useState(false); const [selectedDonation, setSelectedDonation] = useState(null); const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); const [convertData, setConvertData] = useState({ camp_id: '', category: '', item_name: '', quantity: '', expiry_date: '' }); const [stats, setStats] = useState(null);
+  const [tabValue, setTabValue] = useState(0);
+  const [supplies, setSupplies] = useState([]);
+  const [donations, setDonations] = useState([]);
+  const [camps, setCamps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openConvertDialog, setOpenConvertDialog] = useState(false);
+  const [selectedDonation, setSelectedDonation] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [convertData, setConvertData] = useState({ camp_id: '', category: '', item_name: '', quantity: '', expiry_date: '' });
+  const [stats, setStats] = useState(null);
+  
+  // Camp manager filtering
+  const [managerCampIds, setManagerCampIds] = useState([]);
+  const [campNames, setCampNames] = useState([]);
+  const isCampManager = user?.role === 'Camp Manager';
 
   useEffect(() => { loadSupplies(); loadDonations(); loadCamps(); loadStats(); }, []);
 
   const loadSupplies = async () => {
     try {
       setLoading(true);
+      
+      // Get camp IDs for filtering
+      let campIdsToFilter = [];
+      let campNamesForAlert = [];
+      
+      if (isCampManager && user?.user_id) {
+        try {
+          const managerCampsRes = await campManagerService.getManagerCamps(user.user_id);
+          const managerCamps = managerCampsRes.data || [];
+          campIdsToFilter = managerCamps.map(c => c.camp_id);
+          campNamesForAlert = managerCamps.map(c => c.name);
+          setManagerCampIds(campIdsToFilter);
+          setCampNames(campNamesForAlert);
+        } catch (error) {
+          console.error('Error loading manager camps:', error);
+        }
+      }
+      
       const response = await suppliesService.getAllSupplies();
       if (response.data?.length) {
-        const processedSupplies = response.data.map(supply => ({
+        let processedSupplies = response.data.map(supply => ({
           ...supply,
           supply_id: supply.supply_id,
           camp_name: supply.camp_name || 'Unknown Camp',
@@ -28,6 +61,12 @@ const SuppliesPage = () => {
           expiry_status: getExpiryStatus(supply.expiry_date),
           value_per_unit: supply.estimated_value && supply.quantity ? Math.round(supply.estimated_value / supply.quantity) : 0
         }));
+        
+        // Apply camp manager filtering
+        if (isCampManager && campIdsToFilter.length > 0) {
+          processedSupplies = processedSupplies.filter(supply => campIdsToFilter.includes(supply.camp_id));
+        }
+        
         setSupplies(processedSupplies.sort((a, b) => a.supply_id - b.supply_id));
       } else {
         setSupplies([]);
@@ -75,7 +114,6 @@ const SuppliesPage = () => {
 
   const pendingDonations = donations.filter(d => d.status === 'Pledged');
 
-  // Supplies DataGrid Columns
   const suppliesColumns = [
     { field: 'supply_id', headerName: 'ID', width: 60, headerAlign: 'center', align: 'center' },
     { field: 'item_name', headerName: 'Item', width: 150, renderCell: (p) => <Box sx={{ display: 'flex', alignItems: 'center', py: 1 }}><InventoryIcon sx={{ mr: 1, color: 'primary.main', fontSize: '1rem' }} /><Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem' }}>{p.value}</Typography></Box> },
@@ -87,7 +125,6 @@ const SuppliesPage = () => {
     { field: 'actions', headerName: 'Actions', width: 80, sortable: false, renderCell: (p) => <Box sx={{ display: 'flex', gap: 0.5 }}>{user?.role === 'Admin' && <Tooltip title="Edit Stock"><IconButton onClick={() => {}} color="primary" size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>}</Box> }
   ];
 
-  // Donations DataGrid Columns  
   const donationsColumns = [
     { field: 'donation_id', headerName: 'ID', width: 60 },
     { field: 'donor_name', headerName: 'Donor', width: 150, renderCell: (p) => <Typography variant="body2" sx={{ fontWeight: 500 }}>{p.value || 'Unknown'}</Typography> },
@@ -101,22 +138,26 @@ const SuppliesPage = () => {
 
   return (
     <Box>
+      {isCampManager && campNames.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Showing supplies from: {campNames.join(', ')}
+        </Alert>
+      )}
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>📦 Supply Management</Typography>
-          <Typography variant="body2" color="text.secondary">{supplies.length} supplies • {pendingDonations.length} pending donations</Typography>
+          <Typography variant="body2" color="text.secondary">{supplies.length} {isCampManager ? 'camp' : ''} supplies • {pendingDonations.length} pending donations</Typography>
         </Box>
       </Box>
 
-      {/* Statistics Cards */}
       {stats && <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><TrendingIcon sx={{ color: 'primary.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{stats.total_supplies || 0}</Typography><Typography variant="body2" color="text.secondary">Total Supplies</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><WarningIcon sx={{ color: 'warning.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{stats.low_stock_count || 0}</Typography><Typography variant="body2" color="text.secondary">Low Stock</Typography></CardContent></Card></Grid>
-        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><AssignIcon sx={{ color: 'success.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{stats.total_camps || 0}</Typography><Typography variant="body2" color="text.secondary">Active Camps</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><TrendingIcon sx={{ color: 'primary.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{supplies.length}</Typography><Typography variant="body2" color="text.secondary">{isCampManager ? 'Camp' : 'Total'} Supplies</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><WarningIcon sx={{ color: 'warning.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{supplies.filter(s => s.stock_percentage <= 30).length}</Typography><Typography variant="body2" color="text.secondary">Low Stock</Typography></CardContent></Card></Grid>
+        <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><AssignIcon sx={{ color: 'success.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{isCampManager ? campNames.length : stats.total_camps || 0}</Typography><Typography variant="body2" color="text.secondary">{isCampManager ? 'Managed' : 'Active'} Camps</Typography></CardContent></Card></Grid>
         <Grid item xs={12} md={3}><Card><CardContent sx={{ textAlign: 'center' }}><ConvertIcon sx={{ color: 'info.main', fontSize: 40, mb: 1 }} /><Typography variant="h5" sx={{ fontWeight: 700 }}>{pendingDonations.length}</Typography><Typography variant="body2" color="text.secondary">Pending Donations</Typography></CardContent></Card></Grid>
       </Grid>}
 
-      {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
           <Tab label="📦 Current Supplies" />
@@ -124,13 +165,10 @@ const SuppliesPage = () => {
         </Tabs>
       </Box>
 
-      {/* Supplies Tab */}
       {tabValue === 0 && <Card elevation={3}><CardContent sx={{ p: 2 }}><DataGrid rows={supplies} columns={suppliesColumns} getRowId={(row) => row.supply_id} loading={loading} pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 }}}} disableRowSelectionOnClick sx={{ height: 650, '& .MuiDataGrid-row': { minHeight: '60px !important' }}} /></CardContent></Card>}
 
-      {/* Donations Tab */}
       {tabValue === 1 && <Card elevation={3}><CardContent sx={{ p: 2 }}><DataGrid rows={pendingDonations} columns={donationsColumns} getRowId={(row) => row.donation_id} loading={loading} pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 }}}} disableRowSelectionOnClick sx={{ height: 650, '& .MuiDataGrid-row': { minHeight: '60px !important' }}} /></CardContent></Card>}
 
-      {/* Convert Donation Dialog */}
       <Dialog open={openConvertDialog} onClose={() => setOpenConvertDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>🔄 Convert Donation to Supply</DialogTitle>
         <DialogContent>

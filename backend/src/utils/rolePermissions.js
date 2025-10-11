@@ -39,11 +39,11 @@ const ROLE_PERMISSIONS = {
     volunteers: ['read'], // See other volunteers (limited info)
     areas: ['read'],
     camps: ['read'],
-    victims: ['read'], // See victims they're helping
+    victims: ['read', 'create', 'update'], // See victims they're helping
     donors: ['read'], // Basic donor info
     donations: ['read'], // See what donations are available
     supplies: ['read'],
-    requests: ['read'], // See requests in their assigned areas
+    requests: ['read', 'create', 'update'], // See requests in their assigned areas
     distributions: ['read'], // See distributions they made
     worksAt: ['read'], // See their own work assignments
     assignedTo: ['read'], // See their area assignments

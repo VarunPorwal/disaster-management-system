@@ -11,6 +11,13 @@ export const victimsService = {
       return response.data;
     }
   },
+
+  // Add this new method to get victims by camp
+  getVictimsByCamp: async (campId) => {
+    const response = await api.get(`/victims/camp/${campId}`);
+    return response.data;
+  },
+
   createVictim: async (victimData) => {
     const response = await api.post('/victims', victimData);
     return response.data;

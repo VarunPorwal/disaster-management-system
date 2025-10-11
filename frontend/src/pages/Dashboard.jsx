@@ -11,6 +11,14 @@ import SuppliesPage from './SuppliesPage';
 import DonationsPage from './DonationsPage';
 import RequestsPage from './RequestsPage';
 import DistributionsPage from './DistributionsPage';
+import MyAssignmentsPage from './MyAssignmentsPage';
+
+// Add to routes
+import MyDonationsPage from './MyDonationsPage';
+
+// Add route
+
+
 
 
 
@@ -29,6 +37,9 @@ const Dashboard = () => {
         <Route path="/donations" element={<DonationsPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/distributions" element={<DistributionsPage />} />
+        <Route path="/my-assignments" element={<MyAssignmentsPage />} />
+        <Route path="/my-donations" element={<MyDonationsPage />} />
+        
 
       </Routes>
     </Layout>

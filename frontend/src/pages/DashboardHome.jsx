@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import CampManagerDashboard from './CampManagerDashboard';
 import {
   Grid,
   Card,
@@ -12,6 +13,12 @@ import {
 const DashboardHome = () => {
   const { user } = useAuth();
 
+  // If user is Camp Manager, show their specific dashboard
+  if (user?.role === 'Camp Manager') {
+    return <CampManagerDashboard />;
+  }
+
+  // For Admin and other roles, show generic dashboard
   const getRoleColor = (role) => {
     switch (role) {
       case 'Admin': return 'error';

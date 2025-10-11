@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const ReliefCampModel = require('../models/reliefCamp');
+const pool = require('../config/database'); // ADD THIS LINE
 
-// GET all relief camps
+// GET all relief camps - KEEP EXACTLY THE SAME
 router.get('/', async (req, res) => {
   try {
     const camps = await ReliefCampModel.getAllReliefCamps();
@@ -22,7 +23,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET relief camp by ID
+// GET relief camp by ID - KEEP EXACTLY THE SAME
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -50,7 +51,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new relief camp
+// POST create new relief camp - ADD ROLE MANAGEMENT ONLY
 router.post('/', async (req, res) => {
   try {
     const { area_id, manager_id, name, capacity, location, date_established } = req.body;
@@ -64,6 +65,15 @@ router.post('/', async (req, res) => {
     }
     
     const newCamp = await ReliefCampModel.createReliefCamp(req.body);
+    
+    // 🔥 ADD ONLY ROLE MANAGEMENT
+    if (manager_id) {
+      const volunteer = await pool.query('SELECT name FROM Volunteers WHERE volunteer_id = $1', [manager_id]);
+      if (volunteer.rows.length > 0) {
+        const volunteerName = volunteer.rows[0].name;
+        await pool.query(`UPDATE users SET role = 'Camp Manager' WHERE full_name = $1 AND role = 'Volunteer'`, [volunteerName]);
+      }
+    }
     
     res.status(201).json({
       success: true,
@@ -80,7 +90,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT update relief camp
+// PUT update relief camp - ADD ROLE MANAGEMENT ONLY
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -94,6 +104,10 @@ router.put('/:id', async (req, res) => {
       });
     }
     
+    // 🔥 ADD ROLE MANAGEMENT - Get old manager
+    const currentCamp = await pool.query('SELECT manager_id FROM ReliefCamps WHERE camp_id = $1', [id]);
+    const oldManagerVolunteerId = currentCamp.rows[0]?.manager_id;
+    
     const updatedCamp = await ReliefCampModel.updateReliefCamp(id, req.body);
     
     if (!updatedCamp) {
@@ -101,6 +115,28 @@ router.put('/:id', async (req, res) => {
         success: false,
         message: 'Relief camp not found'
       });
+    }
+    
+    // 🔥 ADD ROLE MANAGEMENT
+    // Promote new manager
+    if (manager_id && manager_id !== oldManagerVolunteerId) {
+      const newVolunteer = await pool.query('SELECT name FROM Volunteers WHERE volunteer_id = $1', [manager_id]);
+      if (newVolunteer.rows.length > 0) {
+        const newVolunteerName = newVolunteer.rows[0].name;
+        await pool.query(`UPDATE users SET role = 'Camp Manager' WHERE full_name = $1 AND role = 'Volunteer'`, [newVolunteerName]);
+      }
+    }
+    
+    // Demote old manager if no other camps
+    if (oldManagerVolunteerId && oldManagerVolunteerId !== manager_id) {
+      const otherCamps = await pool.query('SELECT camp_id FROM ReliefCamps WHERE manager_id = $1 AND camp_id != $2', [oldManagerVolunteerId, id]);
+      if (otherCamps.rows.length === 0) {
+        const oldVolunteer = await pool.query('SELECT name FROM Volunteers WHERE volunteer_id = $1', [oldManagerVolunteerId]);
+        if (oldVolunteer.rows.length > 0) {
+          const oldVolunteerName = oldVolunteer.rows[0].name;
+          await pool.query(`UPDATE users SET role = 'Volunteer' WHERE full_name = $1 AND role = 'Camp Manager'`, [oldVolunteerName]);
+        }
+      }
     }
     
     res.json({
@@ -118,10 +154,15 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE relief camp
+// DELETE relief camp - ADD ROLE MANAGEMENT ONLY
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // 🔥 ADD ROLE MANAGEMENT - Get manager before delete
+    const campToDelete = await pool.query('SELECT manager_id FROM ReliefCamps WHERE camp_id = $1', [id]);
+    const managerVolunteerId = campToDelete.rows[0]?.manager_id;
+    
     const deletedCamp = await ReliefCampModel.deleteReliefCamp(id);
     
     if (!deletedCamp) {
@@ -129,6 +170,18 @@ router.delete('/:id', async (req, res) => {
         success: false,
         message: 'Relief camp not found'
       });
+    }
+    
+    // 🔥 ADD ROLE MANAGEMENT - Demote if no other camps
+    if (managerVolunteerId) {
+      const remainingCamps = await pool.query('SELECT camp_id FROM ReliefCamps WHERE manager_id = $1', [managerVolunteerId]);
+      if (remainingCamps.rows.length === 0) {
+        const volunteer = await pool.query('SELECT name FROM Volunteers WHERE volunteer_id = $1', [managerVolunteerId]);
+        if (volunteer.rows.length > 0) {
+          const volunteerName = volunteer.rows[0].name;
+          await pool.query(`UPDATE users SET role = 'Volunteer' WHERE full_name = $1 AND role = 'Camp Manager'`, [volunteerName]);
+        }
+      }
     }
     
     res.json({
@@ -146,7 +199,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// GET camps by area
+// GET camps by area - KEEP EXACTLY THE SAME
 router.get('/area/:area_id', async (req, res) => {
   try {
     const { area_id } = req.params;
@@ -168,11 +221,25 @@ router.get('/area/:area_id', async (req, res) => {
   }
 });
 
-// GET camps by manager
+// GET camps by manager - FIX TO HANDLE user_id to volunteer_id
 router.get('/manager/:manager_id', async (req, res) => {
   try {
     const { manager_id } = req.params;
-    const camps = await ReliefCampModel.getCampsByManager(manager_id);
+    
+    // Check if manager_id is user_id (from frontend) or volunteer_id (direct)
+    let volunteerId = manager_id;
+    
+    // If manager_id is a user_id, convert it to volunteer_id
+    const userCheck = await pool.query('SELECT full_name FROM users WHERE user_id = $1', [manager_id]);
+    if (userCheck.rows.length > 0) {
+      const userFullName = userCheck.rows[0].full_name;
+      const volunteerCheck = await pool.query('SELECT volunteer_id FROM Volunteers WHERE name = $1', [userFullName]);
+      if (volunteerCheck.rows.length > 0) {
+        volunteerId = volunteerCheck.rows[0].volunteer_id;
+      }
+    }
+    
+    const camps = await ReliefCampModel.getCampsByManager(volunteerId);
     
     res.json({
       success: true,
@@ -190,7 +257,7 @@ router.get('/manager/:manager_id', async (req, res) => {
   }
 });
 
-// GET camps with detailed info
+// GET camps with detailed info - KEEP EXACTLY THE SAME
 router.get('/with-details/info', async (req, res) => {
   try {
     const campsWithDetails = await ReliefCampModel.getCampsWithDetails();
@@ -210,7 +277,7 @@ router.get('/with-details/info', async (req, res) => {
   }
 });
 
-// GET camp statistics
+// GET camp statistics - KEEP EXACTLY THE SAME
 router.get('/stats/overview', async (req, res) => {
   try {
     const stats = await ReliefCampModel.getCampStats();
